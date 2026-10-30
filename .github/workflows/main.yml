@@ -1,0 +1,70 @@
+name: 更新IP库列表
+permissions:
+  contents: write
+  actions: write
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # 每6小时运行一次
+  workflow_dispatch: # 允许手动触发
+  push: # 允许提交触发
+
+jobs:
+  update-ip-list:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: 设置Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: 安装依赖
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests
+        pip install beautifulsoup4
+        
+    - name: 运行脚本
+      run: python ${{ github.workspace }}/Collect.py
+
+    - name: 提交并推送
+      run: |
+        # 配置 Git 身份
+        git config --global user.name 'github-actions[bot]'
+        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+        
+        # 检查是否有更改
+        if [ -n "$(git status --porcelain)" ]; then
+          # 1. 暂存修改
+          git add ip.txt
+          
+          # 2. 清空历史：创建一个全新的初始提交
+          git checkout --orphan new-branch # 创建无历史的临时分支
+          git add -A # 重新暂存所有文件（确保包含最新的 ip.txt）
+          git commit -m "获取最新IP库" # 新的初始提交
+          
+          # 3. 删除原主分支
+          git branch -D main
+          
+          # 4. 将临时分支重命名为主分支
+          git branch -m main
+          
+          # 5. 强制推送
+          git push -f origin main
+          echo "IP 库已更新！"
+        else
+          echo "未检测到更改，跳过更新！"
+        fi
+
+    - name: 清理历史工作流记录
+      if: always()
+      uses: Mattraks/delete-workflow-runs@v2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        repository: ${{ github.repository }}
+        retain_days: 0
+        keep_minimum_runs: 2
